@@ -16,12 +16,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors['form'] = 'Too many failed attempts. Please wait a minute and try again.';
     } else {
         [$table, $idCol, $nameCol] = $role === 'farmer' ? ['farmers', 'farmer_id', 'farmer_name'] : ['buyers', 'buyer_id', 'buyer_name'];
-        $stmt = $pdo->prepare("SELECT $idCol AS id, $nameCol AS name, password_hash FROM $table WHERE email = :e");
+        $stmt = $pdo->prepare("SELECT $idCol AS id, $nameCol AS name, avatar, password_hash FROM $table WHERE email = :e");
         $stmt->execute([':e' => $email]);
         $row = $stmt->fetch();
         if ($row && password_verify($pw, $row['password_hash'])) {
             unset($_SESSION['fails'], $_SESSION['lock_until']);
-            login_user((int)$row['id'], $role, $row['name']);
+            login_user((int)$row['id'], $role, $row['name'], $row['avatar'] ?? null);   // avatar shows in the menu straight after login
             flash('Welcome back, ' . $row['name'] . '.');
             redirect($next !== '' ? $next : ($role === 'farmer' ? 'dashboard.php' : 'market_board.php'));
         }
