@@ -25,14 +25,22 @@ else { $nav += ['login.php' => 'Login', 'register_farmer.php' => 'Farmer Sign-up
     <nav aria-label="Main navigation">
       <ul>
         <?php foreach ($nav as $navFile => $navLabel): ?>
-          <li><a href="<?= $navFile ?>"<?= $navFile === $active ? ' aria-current="page" class="active"' : '' ?>><?= $navLabel ?></a></li>
+          <li><a href="<?= $navFile ?>"<?= $navFile === $active ? ' aria-current="page" class="active"' : '' ?>><?= $navLabel ?><?php if ($navFile === 'enquiries.php'): ?> <span class="nav-badge js-badge" hidden>0</span><?php endif; ?></a></li>
         <?php endforeach; ?>
         <?php if ($authUser): ?>
-          <li class="who"><?= e($authUser['name']) ?> (<?= e($authUser['role']) ?>)</li>
+          <li><button type="button" id="notifBtn" class="notif-btn" aria-haspopup="true" aria-expanded="false" aria-controls="notifPanel" aria-label="Messages"><span aria-hidden="true">💬</span><span class="nav-badge js-badge" hidden>0</span></button></li>
+          <li><a class="navuser<?= $active === 'profile.php' ? ' active' : '' ?>" href="profile.php" title="My profile"<?= $active === 'profile.php' ? ' aria-current="page"' : '' ?>><?= avatar_html($authUser['name'], $authUser['avatar'] ?? null, 'sm') ?><span><?= e($authUser['name']) ?></span></a></li>
           <li><form method="post" action="logout.php"><?= csrf_field() ?><button type="submit" class="linklike">Log out</button></form></li>
         <?php endif; ?>
       </ul>
     </nav>
+    <?php if ($authUser): ?>
+    <div id="notifPanel" class="notif-panel" hidden>
+      <div class="notif-head"><strong>Messages</strong><span id="notifTime" class="hint">Checking...</span></div>
+      <ul id="notifList" class="notif-list"></ul>
+      <div class="notif-foot"><a href="enquiries.php">Open all chats</a><span class="hint">Refreshes every 5 seconds</span></div>
+    </div>
+    <?php endif; ?>
   </div>
 </header>
 <main id="main" class="wrap">
