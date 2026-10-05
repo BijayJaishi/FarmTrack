@@ -11,7 +11,7 @@ if (isset($_SESSION['user'])) {
     if (time() - ($_SESSION['last_active'] ?? 0) > SESSION_IDLE_SECONDS) {
         unset($_SESSION['user']);
         $_SESSION['flash'] = ['Your session expired. Please log in again.', 'error'];
-    } else { $_SESSION['last_active'] = time(); }
+    } elseif (!defined('NO_ACTIVITY_TOUCH')) { $_SESSION['last_active'] = time(); }   // background polling must not keep a session alive
 }
 
 /** Escape output (prevents XSS). */
@@ -68,9 +68,9 @@ function valid_password(string $p): bool { return strlen($p) >= 8 && strlen($p) 
 
 function current_user(): ?array { return $_SESSION['user'] ?? null; }   // ['id', 'role', 'name']
 
-function login_user(int $id, string $role, string $name): void {
+function login_user(int $id, string $role, string $name, ?string $avatar = null): void {
     session_regenerate_id(true);                       // prevents session fixation
-    $_SESSION['user'] = ['id' => $id, 'role' => $role, 'name' => $name];
+    $_SESSION['user'] = ['id' => $id, 'role' => $role, 'name' => $name, 'avatar' => $avatar];
     $_SESSION['last_active'] = time();
     unset($_SESSION['csrf']);                          // fresh CSRF token for the new session
 }
@@ -102,4 +102,56 @@ function enquiry_for_user(PDO $pdo, int $eid, array $u) {
         JOIN buyers b ON b.buyer_id = e.buyer_id WHERE e.enquiry_id = :id AND $col = :uid");
     $s->execute([':id' => $eid, ':uid' => $u['id']]);
     return $s->fetch();
+}
+
+/* ---------- Profile helpers ---------- */
+/** Avatar: uploaded photo if valid, otherwise a coloured circle with the user's initials. */
+function avatar_html(string $name, ?string $avatar, string $size = 'md'): string {
+    if ($avatar && preg_match('/^[a-f0-9]{16}\.(jpg|png|webp)$/', $avatar)) {      // only files we created ourselves
+        return '<img class="avatar ' . $size . '" src="uploads/avatars/' . e($avatar) . '" alt="">';
+    }
+    $parts = preg_split('/\s+/', trim($name)) ?: [''];
+    $initials = mb_strtoupper(mb_substr($parts[0], 0, 1) . (count($parts) > 1 ? mb_substr(end($parts), 0, 1) : ''));
+    $hue = crc32($name) % 360;
+    return '<span class="avatar ' . $size . '" style="background:hsl(' . $hue . ',45%,32%)" aria-hidden="true">' . e($initials) . '</span>';
+}
+
+/* ---------- Notifications ---------- */
+/** Unread messages for the logged-in user (newest first). Includes the first message of an enquiry for farmers. */
+function unread_items(PDO $pdo, array $u): array {
+    if ($u['role'] === 'farmer') {
+        $s = $pdo->prepare("SELECT CONCAT('m', m.message_id) AS k, e.enquiry_id, b.business_name AS who, b.avatar AS av, h.crop_name, m.body, m.sent_at AS ts
+                FROM messages m JOIN enquiries e ON e.enquiry_id = m.enquiry_id JOIN harvests h ON h.harvest_id = e.harvest_id
+                JOIN buyers b ON b.buyer_id = e.buyer_id
+                WHERE h.farmer_id = :id AND m.sender = 'buyer' AND m.read_at IS NULL
+            UNION ALL
+            SELECT CONCAT('e', e.enquiry_id), e.enquiry_id, b.business_name, b.avatar, h.crop_name, e.message, e.enquiry_date
+                FROM enquiries e JOIN harvests h ON h.harvest_id = e.harvest_id JOIN buyers b ON b.buyer_id = e.buyer_id
+                WHERE h.farmer_id = :id2 AND e.farmer_read = 0
+            ORDER BY ts DESC LIMIT 50");
+        $s->execute([':id' => $u['id'], ':id2' => $u['id']]);
+    } else {
+        $s = $pdo->prepare("SELECT CONCAT('m', m.message_id) AS k, e.enquiry_id, f.farm_name AS who, f.avatar AS av, h.crop_name, m.body, m.sent_at AS ts
+                FROM messages m JOIN enquiries e ON e.enquiry_id = m.enquiry_id JOIN harvests h ON h.harvest_id = e.harvest_id
+                JOIN farmers f ON f.farmer_id = h.farmer_id
+                WHERE e.buyer_id = :id AND m.sender = 'farmer' AND m.read_at IS NULL
+                ORDER BY m.sent_at DESC LIMIT 50");
+        $s->execute([':id' => $u['id']]);
+    }
+    return $s->fetchAll();
+}
+
+/** The user's most recently active conversations with a last-message preview. */
+function recent_conversations(PDO $pdo, array $u, int $limit = 6): array {
+    $col = $u['role'] === 'farmer' ? 'h.farmer_id' : 'e.buyer_id';      // fixed column names, value is bound
+    $limit = max(1, min($limit, 20));
+    $s = $pdo->prepare("SELECT e.enquiry_id, h.crop_name, f.farm_name, f.avatar AS fav, b.business_name, b.avatar AS bav,
+            COALESCE((SELECT m.body   FROM messages m WHERE m.enquiry_id = e.enquiry_id ORDER BY m.message_id DESC LIMIT 1), e.message) AS last_body,
+            COALESCE((SELECT m.sender FROM messages m WHERE m.enquiry_id = e.enquiry_id ORDER BY m.message_id DESC LIMIT 1), 'buyer') AS last_sender,
+            COALESCE((SELECT m.sent_at FROM messages m WHERE m.enquiry_id = e.enquiry_id ORDER BY m.message_id DESC LIMIT 1), e.enquiry_date) AS last_at
+        FROM enquiries e JOIN harvests h ON h.harvest_id = e.harvest_id
+        JOIN farmers f ON f.farmer_id = h.farmer_id JOIN buyers b ON b.buyer_id = e.buyer_id
+        WHERE $col = :id ORDER BY last_at DESC LIMIT $limit");
+    $s->execute([':id' => $u['id']]);
+    return $s->fetchAll();
 }
