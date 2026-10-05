@@ -17,6 +17,8 @@ CREATE TABLE farmers (
   phone       VARCHAR(20)  NOT NULL,
   email       VARCHAR(120) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,   -- bcrypt via PHP password_hash()
+  bio         VARCHAR(300) NOT NULL DEFAULT '',   -- profile text
+  avatar      VARCHAR(60) NULL,                   -- profile photo file name
   created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -27,6 +29,8 @@ CREATE TABLE buyers (
   phone         VARCHAR(20)  NOT NULL,
   email         VARCHAR(120) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
+  bio           VARCHAR(300) NOT NULL DEFAULT '',
+  avatar        VARCHAR(60) NULL,
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -50,6 +54,7 @@ CREATE TABLE enquiries (
   harvest_id    INT NOT NULL,
   message       TEXT NOT NULL,
   enquiry_date  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  farmer_read   TINYINT(1) NOT NULL DEFAULT 0,   -- has the farmer opened the first message?
   FOREIGN KEY (buyer_id)   REFERENCES buyers(buyer_id)     ON DELETE CASCADE,
   FOREIGN KEY (harvest_id) REFERENCES harvests(harvest_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
@@ -61,6 +66,7 @@ CREATE TABLE messages (
   sender      ENUM('buyer','farmer') NOT NULL,
   body        TEXT NOT NULL,
   sent_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  read_at     DATETIME NULL,                 -- NULL = not yet read by the recipient
   FOREIGN KEY (enquiry_id) REFERENCES enquiries(enquiry_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -91,3 +97,8 @@ INSERT INTO enquiries (buyer_id, harvest_id, message) VALUES
 INSERT INTO messages (enquiry_id, sender, body) VALUES
  (1,'farmer','Hi Anna, yes we can deliver weekly within 50 km. 50 kg is fine.');
 INSERT INTO price_history (harvest_id, old_price, new_price) VALUES (1,4.20,4.50),(3,4.00,3.80);
+
+-- Demo profile text
+UPDATE farmers SET bio='Third-generation vegetable growers in the Riverina. We pick to order and sell direct to local grocers.' WHERE email='ram@greenvalley.example';
+UPDATE farmers SET bio='Family-run orchard growing apples and stone fruit. Chemical-free and picked fresh each week.' WHERE email='sita@sunrise.example';
+UPDATE buyers SET bio='Neighbourhood grocer looking for fresh, local produce delivered weekly.' WHERE email='anna@freshcorner.example';
